@@ -12,19 +12,8 @@ const int setFM_Line  = 42;
 #define Debug0_5Hz
 #define Debug0_25Hz
 
-enum strBuf{
-  inside_temp,inside_humi,
-  pitch,roll,yaw,mag_heading,vertical_accel,
-  gps_HDOP,gps_latitude,gps_longitude,gps_gndspeed,
-  baro_pressure,baro_base_pressure,solar_panel_voltage,
-  fm_transmit_frq
-};
-
-char strBuf[15][20] = {0};
-char prtBuf[100];
-unsigned char rfcrc8 = 0xFE;
-
 static struct pt pt_rf_driver;
+static struct pt pt_receive_ctrl_task;
 static struct pt pt_transmit_20Hz_task, pt_transmit_10Hz_task;
 static struct pt pt_transmit_5Hz_task, pt_transmit_2Hz_task;
 static struct pt pt_transmit_1Hz_task, pt_transmit_0_5Hz_task;
@@ -32,15 +21,21 @@ static struct pt pt_transmit_0_25Hz_task, pt_transmit_0_2Hz_task;
 
 //  Called by "CubeSat_V4"->"setup()"->first call be uesd to init this system.
 void RF_System_Init() {
+  Serial.println("\r\nRF System Init:\r\n");
+  
 //  pinMod(setBT_Line, OUTPUT);
 //  pinMod(setFM_Line, OUTPUT);
-//  Serial2.begin(115200);
+  Serial3.begin(115200);
+
+  Serial.println("\r\nRF System Init Finished...\r\n");
+  
   PT_INIT(&pt_rf_driver);
 }
 
 void TASK_RF_Handle(void) {
   thread_rf_driver(&pt_rf_driver);
-  
+
+  thread_receive_ctrl_task(&pt_receive_ctrl_task);
   thread_transmit_20Hz_task(&pt_transmit_20Hz_task);
   thread_transmit_10Hz_task(&pt_transmit_10Hz_task);
   thread_transmit_5Hz_task(&pt_transmit_5Hz_task);
@@ -53,6 +48,7 @@ void TASK_RF_Handle(void) {
 
 static int thread_rf_driver(struct pt *pt) {
   PT_BEGIN(pt);
+  PT_INIT(&pt_receive_ctrl_task);
   PT_INIT(&pt_transmit_20Hz_task);
   PT_INIT(&pt_transmit_10Hz_task);
   PT_INIT(&pt_transmit_5Hz_task);
@@ -63,6 +59,7 @@ static int thread_rf_driver(struct pt *pt) {
   PT_INIT(&pt_transmit_0_2Hz_task);
 
   PT_WAIT_THREAD(pt, 
+         thread_receive_ctrl_task(&pt_receive_ctrl_task) &
          thread_transmit_20Hz_task(&pt_transmit_20Hz_task) &
          thread_transmit_10Hz_task(&pt_transmit_10Hz_task) &
          thread_transmit_5Hz_task(&pt_transmit_5Hz_task) &
@@ -77,13 +74,13 @@ static int thread_rf_driver(struct pt *pt) {
 
 static bool recevie_ok_flag = false;
 static char readbuf[100] = {0};
-void serialEvent() {
+void serialEvent3() {
   static int cnt = 0;
   static bool start_flag = false;
-      if ( Serial.available() > 0) {
+      if ( Serial3.available() > 0) {
 //        Serial.println();
           if ( start_flag == false ) {
-            if ( Serial.peek() == '{' ) {
+            if ( Serial3.peek() == '{' ) {
               cnt = 0;
               start_flag = true;
             } else {
@@ -94,8 +91,8 @@ void serialEvent() {
           }
           
           if ( start_flag == true ) {
-            while ( Serial.available() > 0 ){
-              readbuf[cnt] = Serial.read();
+            while ( Serial3.available() > 0 ){
+              readbuf[cnt] = Serial3.read();
               if( readbuf[cnt] == '}' ) {
                 recevie_ok_flag = true;
               } else {
@@ -106,8 +103,10 @@ void serialEvent() {
 
           if ( recevie_ok_flag == true ) {
               if ( strchr(readbuf, '}') != NULL ) {
-                  Serial.println(readbuf);
-                  RF_Recevie_Parsing();
+//                  Serial.println(readbuf);
+
+                  RF_Recevie_Parsing(); //  *** nead optimus
+                  
                   memset(readbuf, 0x00, sizeof(readbuf));
                   recevie_ok_flag = false;
                   start_flag = false;
@@ -133,6 +132,12 @@ volatile bool RF_Recevie_Parsing() {
   next_symbol = second_symbol + 1;
   Key1 = str1.substring(first_symbol, second_symbol);
 //  Serial.println(Key1);
+  if( Key1 == "FACTORY") {
+    sys_cmd.factory_flag = true;
+    Serial.println(Key1);
+    String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
+    sys_cmd.factory_mode = Value.toInt();
+  }
   if( Key1 == "HB") {
     sys_cmd.system_flag = true;
     Serial.println("HB");
@@ -152,16 +157,19 @@ volatile bool RF_Recevie_Parsing() {
     sys_cmd.system_reboot = Value.toInt();
   }
   if( Key1 == "LSLR") {
-    sys_cmd.ctrl_flag = true;
+    sys_cmd.ctrl_solar_flag = true;
     Serial.println("LSLR");
     String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
     sys_cmd.ctrl_solar_angle = Value.toInt();
+    Serial.println( sys_cmd.ctrl_solar_angle );
   }
   if( Key1 == "SANT") {
-    sys_cmd.ctrl_flag = true;
+    sys_cmd.ctrl_ant_flag = true;
     Serial.println("SANT");
     String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
     sys_cmd.ctrl_ant = Value.toInt();
+    
+    CTRL_DEPLOY_ANT = (bool)Value.toInt();
   }
   if( Key1 == "FMPW") {
     sys_cmd.set_fm_flag = true;
@@ -223,14 +231,36 @@ volatile bool RF_Recevie_Parsing() {
     Serial.println("MLMD");
     String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
     sys_cmd.set_mled_mode = Value.toInt();
+    
     HMI_DISPLAY_MODE = (bool)Value.toInt();
 //    Serial.println(HMI_DISPLAY_MODE, DEC);
   }
   if( Key1 == "RSLR") {
-    sys_cmd.ctrl_flag = true;
+    sys_cmd.ctrl_solar_flag = true;
     Serial.println("RSLR");
     String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
     sys_cmd.ctrl_solar_reset = Value.toInt();
+  }
+  if( Key1 == "CCAP") {
+    sys_cmd.ctrl_cam_flag = true;
+    Serial.println("CCAP");
+    String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
+    sys_cmd.ctrl_cam_cap = Value.toInt();
+  }
+  if( Key1 == "STIM") {
+    sys_cmd.set_rtc_flag = true;
+    Serial.println("STIM");
+    String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
+    sys_cmd.set_adjust_time_year = Value.substring(0, 4).toInt();
+    sys_cmd.set_adjust_time_month = Value.substring(4, 6).toInt();
+    sys_cmd.set_adjust_time_day = Value.substring(6, 8).toInt();
+    sys_cmd.set_adjust_time_hour = Value.substring(8, 10).toInt();
+    sys_cmd.set_adjust_time_minute = Value.substring(10, 12).toInt();
+    Serial.print(sys_cmd.set_adjust_time_year);Serial.print('\t');
+    Serial.print(sys_cmd.set_adjust_time_month);Serial.print('\t');
+    Serial.print(sys_cmd.set_adjust_time_day);Serial.print('\t');
+    Serial.print(sys_cmd.set_adjust_time_hour);Serial.print('\t');
+    Serial.print(sys_cmd.set_adjust_time_minute);Serial.print('\n');
   }
   return false;
 }
@@ -267,13 +297,41 @@ volatile bool RF_Recevie_Parsing() {
 //}
 */
 
+const int UHF_SET_PIN = 22;
+static int thread_receive_ctrl_task(struct pt *pt) {
+  PT_BEGIN(pt);
+  while(1) {
+    PT_WAIT_UNTIL(pt, sys_cmd.set_uhf_flag == true);
+//    delay(50);
+//    enAT( UHF_SET_PIN );
+//    delay(100);
+//    
+//    testAt();
+//    delay(100);
+//    
+//    setCh( constrain(sys_cmd.set_uhf_ch, 1, 99) );
+//    delay(500);
+//
+//    outAT( UHF_SET_PIN );
+//    delay(500);
+  }
+  PT_END(pt);
+}
+
+//char strBuf[15][20] = {0};
+static char prtBuf[100];
+static uint8_t rfcrc8 = 0xFE;
 static int thread_transmit_20Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug20Hz
-    sprintf(prtBuf, "{\"N\":14,\"AX\":%d,\"AY\":%d,\"AZ\":%d,\"CK\":\"%02X\"}", sys.ax, sys.ay, sys.az, rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":15,\"GX\":%d,\"GY\":%d,\"GZ\":%d,\"CK\":\"%02X\"}", sys.gx, sys.gy, sys.gz, rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":16,\"MX\":%d,\"MY\":%d,\"MZ\":%d,\"CK\":\"%02X\"}", sys.mx, sys.my, sys.mz, rfcrc8);Serial.println(prtBuf);
+    char strBuf[9][20];
+    dtostrf(sys.ax, 1, 2, strBuf[0]); dtostrf(sys.ay, 1, 2, strBuf[1]); dtostrf(sys.az, 1, 2, strBuf[2]);
+    dtostrf(sys.gx, 1, 2, strBuf[3]); dtostrf(sys.gy, 1, 2, strBuf[4]); dtostrf(sys.gz, 1, 2, strBuf[5]);
+    dtostrf(sys.mx, 1, 2, strBuf[6]); dtostrf(sys.my, 1, 2, strBuf[7]); dtostrf(sys.mz, 1, 2, strBuf[8]);
+    sprintf(prtBuf, "{\"N\":14,\"AX\":%s,\"AY\":%s,\"AZ\":%s,\"CK\":\"%X\"}", strBuf[0], strBuf[1], strBuf[2], rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":15,\"GX\":%s,\"GY\":%s,\"GZ\":%s,\"CK\":\"%X\"}", strBuf[3], strBuf[4], strBuf[5], rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":16,\"MX\":%s,\"MY\":%s,\"MZ\":%s,\"CK\":\"%X\"}", strBuf[6], strBuf[7], strBuf[8], rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 50);
   }
@@ -284,10 +342,10 @@ static int thread_transmit_10Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug10Hz
-    sprintf(prtBuf, "{\"N\":3,\"PIT\":%s,\"CK\":\"%02X\"}", strBuf[pitch], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":4,\"ROL\":%s,\"CK\":\"%02X\"}", strBuf[roll], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":5,\"YAW\":%s,\"CK\":\"%02X\"}", strBuf[yaw], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":6,\"HEAD\":%s,\"CK\":\"%02X\"}", strBuf[mag_heading], rfcrc8);Serial.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":3,\"PIT\":%d,\"CK\":\"%X\"}", int(sys.pitch), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":4,\"ROL\":%d,\"CK\":\"%X\"}", int(sys.roll), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":5,\"YAW\":%d,\"CK\":\"%X\"}", int(sys.yaw), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":6,\"HEAD\":%d,\"CK\":\"%X\"}", int(sys.mag_heading)+8, rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 100);
   }
@@ -298,8 +356,11 @@ static int thread_transmit_5Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug5Hz
-    sprintf(prtBuf, "{\"N\":9,\"PRS\":%s,\"CK\":\"%02X\"}", strBuf[baro_pressure], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":11,\"VG\":%s,\"CK\":\"%02X\"}", strBuf[vertical_accel], rfcrc8);Serial.println(prtBuf);
+    char strBuf[20];
+//    Serial.println( sys.vertical_accel );
+    dtostrf(constrain(sys.vertical_accel, 0.0, 100.0), 1, 2, strBuf);
+    sprintf(prtBuf, "{\"N\":9,\"PRS\":%ld,\"CK\":\"%X\"}", sys.baro_pressure, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":11,\"VG\":%s,\"CK\":\"%X\"}", strBuf, rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 200);
   }
@@ -310,10 +371,10 @@ static int thread_transmit_2Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug2Hz
-//    //sprintf(prtBuf, "{\"OUT_TP\":{\"v\":%s}", strBuf[0]);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":1,\"INTP\":%s,\"CK\":\"%02X\"}", strBuf[inside_temp], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":2,\"INHM\":%s,\"CK\":\"%02X\"}", strBuf[inside_humi], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":18,\"BALT\":%d,\"CK\":\"%02X\"}", sys.baro_altitude, rfcrc8);Serial.println(prtBuf);
+    //sprintf(prtBuf, "{\"OUT_TP\":{\"v\":%s}", strBuf[0]);Serial2.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":1,\"INTP\":%d,\"CK\":\"%X\"}", int(sys.inside_temp*10), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":2,\"INHM\":%d,\"CK\":\"%X\"}", int(sys.inside_humi*10), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":18,\"BALT\":%ld,\"CK\":\"%X\"}", sys.baro_altitude, rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 500);
   }
@@ -324,11 +385,12 @@ static int thread_transmit_1Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug1Hz
-    sprintf(prtBuf, "{\"N\":12,\"UVE\":%d,\"CK\":\"%02X\"}", sys.uv_index, rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":13,\"LUXE\":%d,\"CK\":\"%02X\"}", sys.lux, rfcrc8);Serial.println(prtBuf);
-//    sprintf(prtBuf, "{\"N\":24,\"LSRD\":%d,\"CK\":\"%02X\"}", sys.left_solar_rod, rfcrc8);Serial.println(prtBuf);
-//    sprintf(prtBuf, "{\"N\":25,\"RSLD\":%d,\"CK\":\"%02X\"}", sys.right_solar_rod, rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":27,\"VSLR\":%s,\"CK\":\"%02X\"}", strBuf[solar_panel_voltage], rfcrc8);Serial.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":0,\"HB\":%d,\"CK\":\"%X\"}", sys.heart_beat++, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":12,\"UVE\":%d,\"CK\":\"%X\"}", sys.uv_index, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":13,\"LUXE\":%d,\"CK\":\"%X\"}", sys.lux, rfcrc8);Serial3.println(prtBuf);
+//    sprintf(prtBuf, "{\"N\":24,\"LSRD\":%d,\"CK\":\"%X\"}", sys.left_solar_rod, rfcrc8);Serial3.println(prtBuf);
+//    sprintf(prtBuf, "{\"N\":25,\"RSLD\":%d,\"CK\":\"%X\"}", sys.right_solar_rod, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":27,\"VSLR\":%d,\"CK\":\"%X\"}", int(sys.solar_panel_voltage*10), rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 1000);
   }
@@ -339,10 +401,12 @@ static int thread_transmit_0_5Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug0_5Hz
-    sprintf(prtBuf, "{\"N\":7,\"LAT\":%s,\"CK\":\"%02X\"}", strBuf[gps_latitude], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":8,\"LON\":%s,\"CK\":\"%02X\"}", strBuf[gps_longitude], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":22,\"SANT\":%d,\"CK\":\"%02X\"}", sys.antena_status, rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":23,\"SSLR\":%d,\"CK\":\"%02X\"}", sys.solar_panel_status, rfcrc8);Serial.println(prtBuf);
+    char strBuf[2][20];
+    dtostrf(sys.gps_latitude, 1, 4, strBuf[0]);  dtostrf(sys.gps_longitude,1, 4, strBuf[1]);
+    sprintf(prtBuf, "{\"N\":7,\"LAT\":%s,\"CK\":\"%X\"}", strBuf[0], rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":8,\"LON\":%s,\"CK\":\"%X\"}", strBuf[1], rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":22,\"SANT\":%d,\"CK\":\"%X\"}", sys.antena_status = deployAntStatus, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":23,\"SSLR\":%d,\"CK\":\"%X\"}", sys.solar_panel_status = solarPanelStatus, rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 2000);
   }
@@ -353,10 +417,10 @@ static int thread_transmit_0_25Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug0_25Hz
-    sprintf(prtBuf, "{\"N\":19,\"NSAT\":%d,\"CK\":\"%02X\"}", sys.gps_satellites, rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":10,\"GSPD\":%s,\"CK\":\"%02X\"}", strBuf[gps_gndspeed], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":21,\"GALT\":%d,\"CK\":\"%02X\"}", sys.gps_altitude, rfcrc8);Serial.println(prtBuf);
-//    sprintf(prtBuf, "{\"N\":26,\"FMTF\":%s,\"CK\":\"%02X\"}", strBuf[fm_transmit_frq], rfcrc8);Serial.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":19,\"NSAT\":%d,\"CK\":\"%X\"}", sys.gps_satellites, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":10,\"GSPD\":%d,\"CK\":\"%X\"}", int(sys.gps_gndspeed*100), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":21,\"GALT\":%ld,\"CK\":\"%X\"}", sys.gps_altitude, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":26,\"FMTF\":%d,\"CK\":\"%X\"}", sys.fm_transmit_frq, rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 4000);
   }
@@ -367,31 +431,13 @@ static int thread_transmit_0_2Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug0_5Hz
-//    sprintf(prtBuf, "{\"N\":17,\"BSP\":%s,\"CK\":\"%02X\"}", strBuf[baro_base_pressure], rfcrc8);Serial.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":20,\"HDOP\":%s,\"CK\":\"%02X\"}", strBuf[gps_HDOP], rfcrc8);Serial.println(prtBuf);
+    char strBuf[20];
+//    sprintf(prtBuf, "{\"N\":17,\"BSP\":%s,\"CK\":\"%X\"}", strBuf[baro_base_pressure], rfcrc8);Serial3.println(prtBuf);
+    dtostrf(sys.gps_HDOP, 1, 1, strBuf);
+    sprintf(prtBuf, "{\"N\":20,\"HDOP\":%s,\"CK\":\"%X\"}", strBuf, rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 5000);
   }
   PT_END(pt);
 }
-
-void Data_Str_stack() {
-  dtostrf(sys.inside_temp, 1, 1, strBuf[inside_temp]);
-  dtostrf(sys.inside_humi, 1, 1, strBuf[inside_humi]);
-  dtostrf(sys.pitch, 1, 1, strBuf[pitch]);
-  dtostrf(sys.roll, 1, 1, strBuf[roll]);
-  dtostrf(sys.yaw, 1, 1, strBuf[yaw]);
-  dtostrf(sys.mag_heading, 1, 1, strBuf[mag_heading]);
-  dtostrf(sys.vertical_accel, 1, 2, strBuf[vertical_accel]);
-  dtostrf(sys.gps_HDOP, 1, 1, strBuf[gps_HDOP]);
-  dtostrf(sys.gps_latitude, 1, 4, strBuf[gps_latitude]);
-  dtostrf(sys.gps_longitude,1, 4, strBuf[gps_longitude]);
-  dtostrf(sys.gps_gndspeed,1, 4, strBuf[gps_gndspeed]);
-  dtostrf(sys.baro_pressure, 1, 3, strBuf[baro_pressure]);
-  dtostrf(sys.baro_base_pressure, 1, 3, strBuf[baro_base_pressure]);
-  dtostrf(sys.solar_panel_voltage, 1, 1, strBuf[solar_panel_voltage]);
-  dtostrf(sys.fm_transmit_frq, 1, 3, strBuf[fm_transmit_frq]);
-  
-}
-
 
