@@ -108,13 +108,13 @@ static int thread_camera_capture_task(struct pt *pt) {
       //step 1: 停止刷新图像
       do{
         orderStop();
-        PT_TIMER_DELAY(pt, 10);
-      }while(getStop());//check error
+        PT_TIMER_DELAY(pt, 100);
+      }while(!getStop());//check error
 
       //step 2: 获取数据长度到len
       do{
         orderLenth();
-        PT_TIMER_DELAY(pt, 10);
+        PT_TIMER_DELAY(pt, 100);
       }while(getLenth(&len));
 
       //step 3:存入内存卡中

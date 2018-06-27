@@ -91,7 +91,28 @@ static bool Acq_Pos_Ok_Flag = false;
 static int thread_acq_9dof_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1){
-    imu.getData();
+
+IMU_REINIT:
+    static uint32_t err_cnt = 5;
+    static bool imu_status_flag = false;
+    
+    imu_status_flag = imu.getData();
+    
+    if( imu_status_flag == false ) {
+      Serial.print("\r\n IMU Fault! Reinit:");
+    
+      while( imu.getData() == false && --err_cnt ) {
+        imuInit();
+        Serial.print(" . ");
+      }
+
+      if( err_cnt == 0 ) {
+        Serial.println("\r\nERROR:IMU Reinit Failure!");
+        err_cnt = 5;
+        PT_TIMER_DELAY(pt, 1000);
+        goto IMU_REINIT;
+      }
+    }
 
     sys.ax = (imu.AX -525) /16384; sys.ay = (imu.AY +105) /16384; sys.az = (imu.AZ +336) /16384;
     sys.gx = imu.GX *250/32768; sys.gy = imu.GY *250/32768; sys.gz = imu.GZ *250/32768;
