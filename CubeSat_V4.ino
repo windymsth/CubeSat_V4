@@ -37,24 +37,24 @@ void setup() {
   boottime = millis();
 }
 
-static int thread_factory_task(struct pt *pt)
-{
-  PT_BEGIN(pt);
-  while (1) {
-    if( millis() - boottime <= 10000 ) {
-      Serial.println(sys_cmd.factory_mode);
-      if( sys_cmd.factory_mode == 1 ){
-        load( 0x00 );
-        load( 0x01 );
-          moveToAngle(0x00, 120, 2000);
-          moveToAngle(0x01, 120, 2000);
-        while(1);
-      }
-      PT_TIMER_DELAY(pt, 500);
-    }
-  }
-  PT_END(pt);
-}
+//static int thread_factory_task(struct pt *pt)
+//{
+//  PT_BEGIN(pt);
+//  while (1) {
+//    if( millis() - boottime <= 10000 ) {
+//      Serial.println(sys_cmd.factory_mode);
+//      if( sys_cmd.factory_mode == 1 ){
+//        load( 0x00 );
+//        load( 0x01 );
+//          moveToAngle(0x00, 120, 2000);
+//          moveToAngle(0x01, 120, 2000);
+//        while(1);
+//      }
+//      PT_TIMER_DELAY(pt, 500);
+//    }
+//  }
+//  PT_END(pt);
+//}
 
 static int thread_test_task(struct pt *pt)
 {

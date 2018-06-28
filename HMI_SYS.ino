@@ -12,14 +12,16 @@ void HMI_System_Init() {
   Serial.print("Get FMradio Frq and Vol:");
   
   uint8_t err_cnt = 5;
-//  while( (sys.fm_transmit_frq < 870 || sys.fm_transmit_frq > 1080) && err_cnt-- ) {
-//    
-//    orderState();
-//    delay(100);
-//  
-//    getState( sys.fm_transmit_vol, sys.fm_transmit_frq );
-//    Serial.print(" . ");
-//  }
+  while( (sys.fm_transmit_frq < 870 || sys.fm_transmit_frq > 1080) && err_cnt-- ) {
+    
+    orderState();
+    delay(100);
+  
+    getState( &sys.fm_transmit_vol, &sys.fm_transmit_frq );
+    delay(100);
+    
+    Serial.print(" . ");
+  }
   
   if( err_cnt  == 0 ) Serial.println("\r\nERROR:Get FMradio Failure!\r\n");
   

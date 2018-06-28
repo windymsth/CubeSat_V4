@@ -26,11 +26,11 @@ void Postion_System_Init() {
   Serial.println("\r\nPostion System Init:\r\n");
   
   Wire.begin();
-  Serial.println("Setp:0");
+  
   imuInit();
   delay(100);
   imu.getData();
-  Serial.println("Setp:1");
+  
   // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
   // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
   double roll  = atan2(imu.AY, imu.AZ) * RAD_TO_DEG;
@@ -40,9 +40,9 @@ void Postion_System_Init() {
   kalmanY.setAngle(pitch);
 
   timer = micros();
-  Serial.println("Setp:2");
+  
   pressureInit();
-  Serial.println("Setp:3");
+  
   GPS_init();
   
   Serial.println("\r\nPostion System Init Finished...\r\n");
@@ -51,7 +51,6 @@ void Postion_System_Init() {
 }
 
 void TASK_Postion_Handle() {
-  
   thread_pos_driver(&pt_pos_driver);
   
   thread_acq_9dof_task(&pt_acq_9dof_task);
@@ -99,7 +98,7 @@ IMU_REINIT:
     imu_status_flag = imu.getData();
     
     if( imu_status_flag == false ) {
-      Serial.print("\r\n IMU Fault! Reinit:");
+      Serial.print("\r\nIMU Fault! Reinit:");
     
       while( imu.getData() == false && --err_cnt ) {
         imuInit();
@@ -111,6 +110,8 @@ IMU_REINIT:
         err_cnt = 5;
         PT_TIMER_DELAY(pt, 1000);
         goto IMU_REINIT;
+      } else {
+        Serial.println("\r\nATTENTION:IMU Reinit SUCCESS!");
       }
     }
 
