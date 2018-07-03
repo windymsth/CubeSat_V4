@@ -60,20 +60,6 @@ void SDlogger_init(void) {
 static int thread_datalog_record_task(struct pt *pt) {
   
   static char logBuf[200];
-//  static char heating_panel_temp_sBuf[20];
-//  static char inside_temp_sBuf[20];
-//  static char inside_humi_sBuf[20];
-//  static char pitch_sBuf[20];
-//  static char roll_sBuf[20];
-//  static char yaw_sBuf[20];
-//  static char mag_heading_sBuf[20];
-//  static char gps_latitude_sBuf[20];
-//  static char gps_longitude_sBuf[20];
-//  static char gps_altitude_sBuf[20];
-//  static char baro_altitude_sBuf[20];
-//  static char baro_pressure_sBuf[20];
-//  static char gps_gndspeed_sBuf[20];
-//  static char vertical_accel_sBuf[20];
   
   PT_BEGIN(pt);
   while(1) {

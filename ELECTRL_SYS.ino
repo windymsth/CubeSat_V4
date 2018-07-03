@@ -52,7 +52,7 @@ void Electrl_System_Init() {
         digitalRead(solarPanel_Right_LimitClose) == LOW ) {
           
       solarPanel_offset_zero = readAngle( solarPanel );
-      Serial.println(solarPanel_offset_zero); 
+      Serial.println(solarPanel_offset_zero);
       
       if( solarPanel_offset_zero >= 0 && solarPanel_offset_zero <= 240 )
         solarPanel_readOK_flag = true;
@@ -71,6 +71,7 @@ Init_deployAnt:
       //  Servo angle read normal should is 120
       deployAnt_offset_zero = readAngle( deployAnt );
       Serial.println(deployAnt_offset_zero); 
+      
       if( deployAnt_offset_zero >= 10 && deployAnt_offset_zero <= 230 )
         deployAnt_readOK_flag = true;
       else  

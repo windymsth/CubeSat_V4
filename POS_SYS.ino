@@ -203,7 +203,6 @@ static int thread_clc_pos_task(struct pt *pt) {
 //  double YH = sys.my*cos(kalAngleX) + sys.mz*sin(kalAngleX);
 //  double yaw = atan( YH / XH );
   double yaw = atan2( sys.my, sys.mx );
-//  double yaw = atan2( imu.MY, imu.MX );
   float declinationAngle = (4.0 + (26.0 / 60.0)) / (180 / M_PI);
   yaw += declinationAngle;
   yaw = correctAngle(yaw);
@@ -257,7 +256,6 @@ static int thread_clc_alt_task(struct pt *pt) {
   while(1){
     PT_WAIT_UNTIL(pt, Acq_Baro_Ok_Flag == true);
     Acq_Baro_Ok_Flag = false;
-//    sys.baro_altitude = altitudeVal(sys.baro_pressure, 101325);
 //    sys.baro_pressure = pressureKalmanFilter.updateEstimate( sys.baro_pressure );
     sys.baro_altitude = altitudeVal( sys.baro_pressure, 101325 );
 #if 0

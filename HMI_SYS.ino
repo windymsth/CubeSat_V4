@@ -1,6 +1,12 @@
+#define  Normal 0
+#define  User   1
+
 static struct pt pt_hmi_driver;
 static struct pt pt_hmi_change_mode_task, pt_hmi_display_right_task, pt_hmi_display_left_task;
 static struct pt pt_hmi_ctrl_fmradio_task;
+
+static uint8_t R = 0, G = 0, B = 150;
+static uint8_t HMI_DISPLAY_MODE = Normal;
 
 //  Called by "CubeSat_V4"->"setup()"->first call be uesd to init this system.
 void HMI_System_Init() {
@@ -33,6 +39,15 @@ void HMI_System_Init() {
   
   wsInit();
 
+  HMI_DISPLAY_MODE = Normal;
+  
+  while( showStrLeft("FFFF", 150, 0, 0) == 0 ) {
+    delay(50);
+  }
+  while( showStrRight("FFFF", 150, 0, 0) == 0 ) {
+    delay(50);
+  }
+        
   Serial.println("\r\nHMI System Init Finished...\r\n");
   
   PT_INIT(&pt_hmi_driver);
@@ -64,10 +79,8 @@ static int thread_hmi_driver(struct pt *pt) {
   PT_END(pt);
 }
 
-#define  Normal 0
-#define  User   1
-static uint8_t R = 0, G = 0, B = 150;
-static char HMI_DISPLAY_MODE = 0;
+
+// HMI Display mode manage task
 static int thread_hmi_change_mode_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1){
@@ -88,6 +101,7 @@ static int thread_hmi_display_right_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1){
     if( HMI_DISPLAY_MODE == Normal ) {
+      Serial.println("dis right");
       char hmibuf[20];
       float temp;
       temp = sys.inside_temp;
@@ -103,12 +117,13 @@ static int thread_hmi_display_right_task(struct pt *pt) {
     }
 
     if( HMI_DISPLAY_MODE == User ){
+      Serial.println("dis right2");
       clearPixels("right");
       for(char i=0; i<8; i++) {
         setPixels("right", i, sys_cmd.set_mled[i], R, G, B);//0行，B00000001，R:0，G:0，B:150
       }
       showPixels("right");
-      PT_TIMER_DELAY(pt, 500);
+      PT_TIMER_DELAY(pt, 200);
     }
   }
   PT_END(pt);
@@ -138,7 +153,7 @@ static int thread_hmi_display_left_task(struct pt *pt) {
         setPixels("left", i, sys_cmd.set_mled[i], R, G, B);//0行，B00000001，R:0，G:0，B:150
       }
       showPixels("left");
-      PT_TIMER_DELAY(pt, 500);
+      PT_TIMER_DELAY(pt, 200);
     }
   }
   PT_END(pt);

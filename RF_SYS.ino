@@ -302,6 +302,8 @@ static int thread_receive_ctrl_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     PT_WAIT_UNTIL(pt, sys_cmd.set_uhf_flag == true);
+    static unsigned int uhf_cnt = 0;
+    uhf_cnt++;
 //    delay(50);
 //    enAT( UHF_SET_PIN );
 //    delay(100);
@@ -318,7 +320,6 @@ static int thread_receive_ctrl_task(struct pt *pt) {
   PT_END(pt);
 }
 
-//char strBuf[15][20] = {0};
 static char prtBuf[100];
 static uint8_t rfcrc8 = 0xFE;
 static int thread_transmit_20Hz_task(struct pt *pt) {
