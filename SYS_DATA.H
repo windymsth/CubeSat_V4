@@ -31,9 +31,9 @@ typedef struct SYS_DATA{
   volatile uint32_t gps_altitude = 0;
   volatile uint16_t gps_distance = 0;
   
-  volatile uint32_t baro_pressure = 0;
+  volatile uint32_t baro_pressure = 0.0;
   volatile uint32_t baro_altitude = 0;
-  volatile uint32_t baro_base_pressure = 0;
+  volatile uint32_t baro_base_pressure = 0.0;
 
   volatile uint8_t uv_index = 0;
   volatile uint16_t lux = 0;

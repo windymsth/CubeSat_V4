@@ -1,23 +1,18 @@
-#define  Normal 0
-#define  User   1
-
 static struct pt pt_hmi_driver;
-static struct pt pt_hmi_change_mode_task, pt_hmi_display_right_task, pt_hmi_display_left_task;
+static struct pt pt_hmi_change_mode_task; 
+static struct pt pt_hmi_light_middle_task, pt_hmi_display_right_task, pt_hmi_display_left_task;
 static struct pt pt_hmi_ctrl_fmradio_task;
-
-static uint8_t R = 0, G = 0, B = 150;
-static uint8_t HMI_DISPLAY_MODE = Normal;
 
 //  Called by "CubeSat_V4"->"setup()"->first call be uesd to init this system.
 void HMI_System_Init() {
   Serial.println("\r\nHMI System Init:\r\n");
   
   FMinit();
-  delay(10);
-
-  Serial.print("Get FMradio Frq and Vol:");
   
+  Serial.print("Get FMradio Frq and Vol:");
+
   uint8_t err_cnt = 5;
+  sys.fm_transmit_frq = 0;
   while( (sys.fm_transmit_frq < 870 || sys.fm_transmit_frq > 1080) && err_cnt-- ) {
     
     orderState();
@@ -38,16 +33,7 @@ void HMI_System_Init() {
   Serial.println(" ]");
   
   wsInit();
-
-  HMI_DISPLAY_MODE = Normal;
-  
-  while( showStrLeft("FFFF", 150, 0, 0) == 0 ) {
-    delay(50);
-  }
-  while( showStrRight("FFFF", 150, 0, 0) == 0 ) {
-    delay(50);
-  }
-        
+      
   Serial.println("\r\nHMI System Init Finished...\r\n");
   
   PT_INIT(&pt_hmi_driver);
@@ -58,6 +44,7 @@ void TASK_HMI_Handle() {
   thread_hmi_driver(&pt_hmi_driver);
   
   thread_hmi_change_mode_task(&pt_hmi_change_mode_task);
+  thread_hmi_light_middle_task(&pt_hmi_light_middle_task);
   thread_hmi_display_right_task(&pt_hmi_display_right_task);
   thread_hmi_display_left_task(&pt_hmi_display_left_task);
   thread_hmi_ctrl_fmradio_task(&pt_hmi_ctrl_fmradio_task);
@@ -67,20 +54,24 @@ static int thread_hmi_driver(struct pt *pt) {
   PT_BEGIN(pt);
   
   PT_INIT(&pt_hmi_change_mode_task);
+  PT_INIT(&pt_hmi_light_middle_task);
   PT_INIT(&pt_hmi_display_right_task);
   PT_INIT(&pt_hmi_display_left_task);
   PT_INIT(&pt_hmi_ctrl_fmradio_task);
 
   PT_WAIT_THREAD(pt, 
          thread_hmi_change_mode_task(&pt_hmi_change_mode_task) &
+         thread_hmi_light_middle_task(&pt_hmi_light_middle_task) &
          thread_hmi_display_right_task(&pt_hmi_display_right_task) &
          thread_hmi_display_left_task(&pt_hmi_display_left_task) &
          thread_hmi_ctrl_fmradio_task(&pt_hmi_ctrl_fmradio_task));
   PT_END(pt);
 }
 
-
-// HMI Display mode manage task
+#define  Normal 0
+#define  User   1
+static uint8_t R = 0, G = 0, B = 150;
+static char HMI_DISPLAY_MODE = 0;
 static int thread_hmi_change_mode_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1){
@@ -97,11 +88,31 @@ static int thread_hmi_change_mode_task(struct pt *pt) {
   PT_END(pt);
 }
 
+static int thread_hmi_light_middle_task(struct pt *pt) {
+  static uint8_t brt_cnt = 0;
+  PT_BEGIN(pt);
+  while(1){
+      clearPixels("middle");
+      setPixels("middle", 0, 0x01, 0, 0, 0);
+      for(brt_cnt=0;brt_cnt<250;brt_cnt+=5) {
+        setPixels("middle", 0, 0x01, 0, brt_cnt, 0);
+        showPixels("middle");
+        PT_TIMER_DELAY(pt, 50);
+      }
+      for(brt_cnt=250;brt_cnt>0;brt_cnt-=5) {
+        setPixels("middle", 0, 0x01, 0, brt_cnt, 0);
+        showPixels("middle");
+        PT_TIMER_DELAY(pt, 50);
+      }
+      PT_TIMER_DELAY(pt, 100);
+  }
+  PT_END(pt);
+}
+
 static int thread_hmi_display_right_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1){
     if( HMI_DISPLAY_MODE == Normal ) {
-      Serial.println("dis right");
       char hmibuf[20];
       float temp;
       temp = sys.inside_temp;
@@ -112,12 +123,11 @@ static int thread_hmi_display_right_task(struct pt *pt) {
       clearPixels("right");
       while( showStrRight(str, R, G, B) == 0 ) {      
 //        if( HMI_DISPLAY_MODE != Normal ) PT_YIELD(pt);
-        PT_TIMER_DELAY(pt, 50);
+        PT_TIMER_DELAY(pt, 100);
       }
     }
 
     if( HMI_DISPLAY_MODE == User ){
-      Serial.println("dis right2");
       clearPixels("right");
       for(char i=0; i<8; i++) {
         setPixels("right", i, sys_cmd.set_mled[i], R, G, B);//0行，B00000001，R:0，G:0，B:150
@@ -125,6 +135,7 @@ static int thread_hmi_display_right_task(struct pt *pt) {
       showPixels("right");
       PT_TIMER_DELAY(pt, 200);
     }
+    PT_TIMER_DELAY(pt, 10);
   }
   PT_END(pt);
 }
@@ -143,7 +154,7 @@ static int thread_hmi_display_left_task(struct pt *pt) {
       clearPixels("left");
       while( showStrLeft(str, R, G, B) == 0 ) {
 //        if( HMI_DISPLAY_MODE != Normal ) PT_YIELD(pt);
-        PT_TIMER_DELAY(pt, 50);
+        PT_TIMER_DELAY(pt, 100);
       }
     }
     
@@ -155,6 +166,7 @@ static int thread_hmi_display_left_task(struct pt *pt) {
       showPixels("left");
       PT_TIMER_DELAY(pt, 200);
     }
+    PT_TIMER_DELAY(pt, 10);
   }
   PT_END(pt);
 }
@@ -163,7 +175,8 @@ static int thread_hmi_ctrl_fmradio_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     PT_WAIT_UNTIL(pt, sys_cmd.set_fm_flag == true);
-      sys_cmd.set_fm_flag = false;      
+      sys_cmd.set_fm_flag = false;
+      
       setFre( int(sys_cmd.set_fm_frq *10) );
       PT_TIMER_DELAY(pt, 200);
       setVol( int(sys_cmd.set_fm_vol) );//  setup vol failure

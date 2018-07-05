@@ -8,8 +8,8 @@ static struct pt pt_electrl_manage_task, pt_electrl_execute_task;
 
 // PIN
 static int solarPanelStatus  = false;
-const int solarPanel_Left_LimitClose  = 29;
-const int solarPanel_Right_LimitClose  = 29;
+const int solarPanel_Left_LimitClose  = 5;
+const int solarPanel_Right_LimitClose  = 38;
 
 static int deployAntStatus   = false;
 const int deployAntLimitClose   = 30;
@@ -24,7 +24,9 @@ static int solarPanel_offset_zero = 0;
 static int deployAnt_offset_zero = 0;
 
 int overload = 10;
-int readSevroStatus(int i){}
+int readSevroStatus(int i) {
+  NOP;
+}
 
 //  Called by "CubeSat_V4"->"setup()"->first call be uesd to init this system.
 void Electrl_System_Init() {
@@ -32,17 +34,55 @@ void Electrl_System_Init() {
   
   pinMode(solarPanel_Left_LimitClose, INPUT);
   pinMode(solarPanel_Right_LimitClose, INPUT);  
-  pinMode(deployAntLimitClose, INPUT);
+//  pinMode(deployAntLimitClose, INPUT);
 
   digitalWrite(solarPanel_Left_LimitClose, HIGH);
   digitalWrite(solarPanel_Right_LimitClose, HIGH);
-  digitalWrite(deployAntLimitClose, HIGH);
+//  digitalWrite(deployAntLimitClose, HIGH);
 
   solarPanelStatus  = close;
   deployAntStatus   = close;
 
+  Serial.print("\r\nServo Init:\r\n");
   ssInit();
+  int err_cnt;
+  for( err_cnt=0; err_cnt<5; err_cnt++ ) {
+    solarPanel_offset_zero = readAngle( solarPanel );
+    deployAnt_offset_zero = readAngle( deployAnt );
+    Serial.print(solarPanel_offset_zero);
+    Serial.print(',');
+    Serial.print(deployAnt_offset_zero);
+    Serial.print('\t');
+    if( solarPanel_offset_zero != -491 && solarPanel_offset_zero != -491 ) {
+      Serial.print("\r\nServo ReadAngle OK:[");
+      Serial.print(solarPanel_offset_zero);
+      Serial.print(" , ");
+      Serial.print(solarPanel_offset_zero);
+      Serial.print("]\r\n");
+      break;
+    }
+  }
+  if( err_cnt >= 5 ) {
+    Serial.print("\r\nERROR:Servo Init Failure!\r\n");
+  }
+//      moveToAngle(0,120,500);moveToAngle(1,120,500);
+//      delay(1000);
+//      Serial.println(readAngle(0));Serial.println(readAngle(1));
+//      
+//      moveToAngle(0,30,500);moveToAngle(1,30,500);
+//      delay(1000);
+//      Serial.println(readAngle(0));Serial.println(readAngle(1));
+//      
+//      moveToAngle(0,120,500);moveToAngle(1,120,500);
+//      delay(2000);
+//      Serial.println(readAngle(0));Serial.println(readAngle(1)); 
 
+    Serial.print("\r\nLimitKey:[");
+    Serial.print( digitalRead(solarPanel_Left_LimitClose), DEC );
+    Serial.print(" , ");
+    Serial.print( digitalRead(solarPanel_Right_LimitClose), DEC );
+    Serial.print("]\r\n");
+      
   //  solarPanel Servo zeroPosition offset
   if( digitalRead(solarPanel_Left_LimitClose) == LOW &&
       digitalRead(solarPanel_Right_LimitClose) == LOW ) {
@@ -51,13 +91,15 @@ void Electrl_System_Init() {
     if( digitalRead(solarPanel_Left_LimitClose) == LOW &&
         digitalRead(solarPanel_Right_LimitClose) == LOW ) {
           
-      solarPanel_offset_zero = readAngle( solarPanel );
-      Serial.println(solarPanel_offset_zero);
+//      solarPanel_offset_zero = readAngle( solarPanel );
+      Serial.print("\r\nSolarPanel Offset Zero:[");
+      Serial.print(solarPanel_offset_zero);
+      Serial.print("]\r\n");
       
-      if( solarPanel_offset_zero >= 0 && solarPanel_offset_zero <= 240 )
+      if( solarPanel_offset_zero >= 110 && solarPanel_offset_zero <= 120 )
         solarPanel_readOK_flag = true;
-      else  
-        Serial.println("ERROR:Servo Angle read abnormal!\r\n");
+      else
+        Serial.println("ERROR:Servo Angle read abnormal!\r\n"); 
     }
   }
 
@@ -70,9 +112,9 @@ Init_deployAnt:
 
       //  Servo angle read normal should is 120
       deployAnt_offset_zero = readAngle( deployAnt );
-      Serial.println(deployAnt_offset_zero); 
+      Serial.println(deployAnt_offset_zero);
       
-      if( deployAnt_offset_zero >= 10 && deployAnt_offset_zero <= 230 )
+      if( deployAnt_offset_zero >= 0 && deployAnt_offset_zero <= 240 )
         deployAnt_readOK_flag = true;
       else  
         Serial.println("ERROR:Servo Angle read abnormal!\r\n");
@@ -117,7 +159,7 @@ Init_deployAnt:
   
   unLoad(solarPanel);
   unLoad(deployAnt);
-
+  
   Serial.println("\r\nElectrl System Init Finished...\r\n");
   
   PT_INIT(&pt_electrl_driver);
@@ -229,7 +271,7 @@ static int thread_electrl_execute_task(struct pt *pt) {
     //  deploy ANT
     if( CTRL_DEPLOY_ANT == open && deployAnt_execute_flag == true ) {
       load( deployAnt );
-      moveToAngle(deployAnt, 90 + deployAnt_offset_zero, 3000);
+      moveToAngle(deployAnt, sys_cmd.ctrl_ant + deployAnt_offset_zero, 3000);
       
       PT_TIMER_DELAY(pt, 3000);
       unLoad( deployAnt );
@@ -261,4 +303,61 @@ static int thread_electrl_execute_task(struct pt *pt) {
   PT_END(pt);
 }
 
+
+void deployAnt_Servo_Init() {
+//  deployAnt Servo zeroPosition offset
+Init_deployAnt:
+  if( digitalRead(deployAntLimitClose) == LOW ) {
+    delay(20);  //  Key anti shake
+    
+    if( digitalRead(deployAntLimitClose) == LOW ) {
+
+      //  Servo angle read normal should is 120
+      deployAnt_offset_zero = readAngle( deployAnt );
+      Serial.println(deployAnt_offset_zero);
+      
+      if( deployAnt_offset_zero >= 0 && deployAnt_offset_zero <= 240 )
+        deployAnt_readOK_flag = true;
+      else  
+        Serial.println("ERROR:Servo Angle read abnormal!\r\n");
+        
+    } else {
+      //  deployANT is not closed status, when boot.
+      //  Servo angle read normal should is 120
+      for(static uint8_t bkCnt = 0; bkCnt < 2; bkCnt++) {
+        
+        deployAnt_offset_zero = readAngle( deployAnt );
+        if( deployAnt_offset_zero < 10 && deployAnt_offset_zero > 230 ) {
+          Serial.println("\r\nWarning : deployAnt Servo setup status problems!\r\n");
+        } else {
+          if( deployAnt_offset_zero < 120 ) deployAnt_offset_zero = 130;
+          if( deployAnt_offset_zero > 120 ) deployAnt_offset_zero = 110;
+          
+          load( deployAnt );
+          moveToAngle(deployAnt, deployAnt_offset_zero, 2500);
+          
+          long nowtimes = millis();
+          while( (millis() - nowtimes) > 2600 ) {
+            nowtimes = millis();
+            if( digitalRead(deployAntLimitClose) == LOW ) {
+              unLoad( deployAnt );
+              goto Init_deployAnt;  //  ***goto
+            }
+            if( readSevroStatus( deployAnt ) == overload ){
+              unLoad( deployAnt );
+              break;
+            }
+            delay(1);
+          } //  end of while
+
+          Serial.println("\r\nWarning : deployAnt Servo Reset Failure!\r\n");
+          Serial.println("\r\nWarning : deployAnt Servo setup status problems!\r\n");
+        } //  end of else
+      } //  end of for
+      Serial.println("\r\nWarning : deployAnt Servo Reinit Failure!\r\n");
+      Serial.println("\r\nWarning : deployAnt Servo setup status problems!\r\n");
+    } //  end of else
+  }
+  
+}
 

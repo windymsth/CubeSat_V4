@@ -4,14 +4,14 @@
 #include "commINC.h"
 #include "SYS_DATA.H"
 
+#define NOP do { __asm__ __volatile__ ("nop"); } while (0)
+
 static struct pt pt_test_task, pt_factory_task;
 //static struct pt_sem sem_LED;
 
 //#define SERIAL_RX_BUFFER_SIZE 256
 
 static uint32_t boottime = 0;
-
-//  2018/06/26
 
 void setup() {
   //Set Hardware
@@ -25,7 +25,7 @@ void setup() {
   RF_System_Init();
   Sensor_System_Init();
 
-  Setup_Watchdog(6); //  6=1 sec
+//  Setup_Watchdog(6); //  6=1 sec
   
   //Initialize Semaphore
 //  PT_SEM_INIT(&sem_LED,1);
@@ -37,34 +37,38 @@ void setup() {
   boottime = millis();
 }
 
-//static int thread_factory_task(struct pt *pt)
-//{
-//  PT_BEGIN(pt);
-//  while (1) {
-//    if( millis() - boottime <= 10000 ) {
-//      Serial.println(sys_cmd.factory_mode);
-//      if( sys_cmd.factory_mode == 1 ){
-//        load( 0x00 );
-//        load( 0x01 );
-//          moveToAngle(0x00, 120, 2000);
-//          moveToAngle(0x01, 120, 2000);
-//        while(1);
-//      }
-//      PT_TIMER_DELAY(pt, 500);
-//    }
-//  }
-//  PT_END(pt);
-//}
+static int thread_factory_task(struct pt *pt)
+{
+  PT_BEGIN(pt);
+  while (1) {
+    if( ( millis() - boottime ) <= 10000 ) {
+      Serial.print("\r\nFACTORY MODE:");
+      Serial.println(sys_cmd.factory_mode, DEC);
+      if( sys_cmd.factory_mode == 1 ){
+        Serial.print("\r\nINTO FACTORY MODE:");
+        load( 0x00 );
+        load( 0x01 );
+          moveToAngle(0x00, 120, 2000);
+          moveToAngle(0x01, 120, 2000);
+        while(1);
+      }
+      PT_TIMER_DELAY(pt, 500);
+    } else {
+      PT_EXIT(pt);
+    }
+  }
+  PT_END(pt);
+}
 
 static int thread_test_task(struct pt *pt)
 {
   static long nowtime = 0;
   PT_BEGIN(pt);
   while (1) {
-//    Data_Str_stack(); // Waste lots of time, *** need optimize
     Serial.print("Ms:");Serial.print(millis() - nowtime);Serial.println('\t');
     nowtime = millis();
-    PT_TIMER_DELAY(pt, 1000);    
+    PT_TIMER_DELAY(pt, 1000);
+//    PT_YIELD(pt);
   }
   PT_END(pt);
 }
@@ -83,7 +87,7 @@ void loop() {
 
   TASK_Sensor_Handle();
 
-//  thread_factory_task(&pt_factory_task);
+  thread_factory_task(&pt_factory_task);
   thread_test_task(&pt_test_task);
 }
 

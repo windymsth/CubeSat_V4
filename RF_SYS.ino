@@ -73,9 +73,9 @@ static int thread_rf_driver(struct pt *pt) {
 }
 
 static bool recevie_ok_flag = false;
-static char readbuf[100] = {0};
+static char readbuf[256] = {0};
 void serialEvent3() {
-  static int cnt = 0;
+  static uint16_t cnt = 0;
   static bool start_flag = false;
       if ( Serial3.available() > 0) {
 //        Serial.println();
@@ -93,7 +93,7 @@ void serialEvent3() {
           if ( start_flag == true ) {
             while ( Serial3.available() > 0 ){
               readbuf[cnt] = Serial3.read();
-              if( readbuf[cnt] == '}' ) {
+              if( readbuf[cnt] == '\n' ) {
                 recevie_ok_flag = true;
               } else {
                 cnt++;
@@ -191,18 +191,18 @@ volatile bool RF_Recevie_Parsing() {
     sys_cmd.set_fm_vol = Value.toInt();
     Serial.println(sys_cmd.set_fm_vol);
   }
-  if( Key1 == "UBUD") {
-    sys_cmd.set_uhf_flag = true;
-    Serial.println("UBUD");
-    String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
-    sys_cmd.set_uhf_bud = Value.toInt();
-    Serial.println(sys_cmd.set_uhf_bud);
-    
-    int s = str1.indexOf("\"UCHL\":") + sizeof("\"UCHL\":") - 1;
-    Value = str1.substring( s, str1.indexOf(',', s));
-    sys_cmd.set_uhf_ch = Value.toInt();
-    Serial.println(sys_cmd.set_uhf_ch);
-  }
+//  if( Key1 == "UBUD") {
+//    sys_cmd.set_uhf_flag = true;
+//    Serial.println("UBUD");
+//    String Value = str1.substring( str1.indexOf(':', next_symbol) +1, str1.indexOf(',', next_symbol));
+//    sys_cmd.set_uhf_bud = Value.toInt();
+//    Serial.println(sys_cmd.set_uhf_bud);
+//    
+//    int s = str1.indexOf("\"UCHL\":") + sizeof("\"UCHL\":") - 1;
+//    Value = str1.substring( s, str1.indexOf(',', s));
+//    sys_cmd.set_uhf_ch = Value.toInt();
+//    Serial.println(sys_cmd.set_uhf_ch);
+//  }
   if( Key1 == "MN") {
     sys_cmd.set_mled_flag = true;
     Serial.println("MN");
@@ -256,11 +256,11 @@ volatile bool RF_Recevie_Parsing() {
     sys_cmd.set_adjust_time_day = Value.substring(6, 8).toInt();
     sys_cmd.set_adjust_time_hour = Value.substring(8, 10).toInt();
     sys_cmd.set_adjust_time_minute = Value.substring(10, 12).toInt();
-    Serial.print(sys_cmd.set_adjust_time_year);Serial.print('\t');
-    Serial.print(sys_cmd.set_adjust_time_month);Serial.print('\t');
-    Serial.print(sys_cmd.set_adjust_time_day);Serial.print('\t');
-    Serial.print(sys_cmd.set_adjust_time_hour);Serial.print('\t');
-    Serial.print(sys_cmd.set_adjust_time_minute);Serial.print('\n');
+//    Serial.print(sys_cmd.set_adjust_time_year);Serial.print('\t');
+//    Serial.print(sys_cmd.set_adjust_time_month);Serial.print('\t');
+//    Serial.print(sys_cmd.set_adjust_time_day);Serial.print('\t');
+//    Serial.print(sys_cmd.set_adjust_time_hour);Serial.print('\t');
+//    Serial.print(sys_cmd.set_adjust_time_minute);Serial.print('\n');
   }
   return false;
 }
@@ -304,6 +304,7 @@ static int thread_receive_ctrl_task(struct pt *pt) {
     PT_WAIT_UNTIL(pt, sys_cmd.set_uhf_flag == true);
     static unsigned int uhf_cnt = 0;
     uhf_cnt++;
+    NOP;
 //    delay(50);
 //    enAT( UHF_SET_PIN );
 //    delay(100);
@@ -343,10 +344,10 @@ static int thread_transmit_10Hz_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1) {
     #ifdef  Debug10Hz
-    sprintf(prtBuf, "{\"N\":3,\"PIT\":%d,\"CK\":\"%X\"}", int(sys.pitch), rfcrc8);Serial3.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":4,\"ROL\":%d,\"CK\":\"%X\"}", int(sys.roll), rfcrc8);Serial3.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":5,\"YAW\":%d,\"CK\":\"%X\"}", int(sys.yaw), rfcrc8);Serial3.println(prtBuf);
-    sprintf(prtBuf, "{\"N\":6,\"HEAD\":%d,\"CK\":\"%X\"}", int(sys.mag_heading)+8, rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":3,\"PIT\":%d,\"CK\":\"%X\"}", int(sys.pitch*10), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":4,\"ROL\":%d,\"CK\":\"%X\"}", int(sys.roll*10), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":5,\"YAW\":%d,\"CK\":\"%X\"}", int(sys.yaw*10), rfcrc8);Serial3.println(prtBuf);
+    sprintf(prtBuf, "{\"N\":6,\"HEAD\":%d,\"CK\":\"%X\"}", int(sys.mag_heading*10), rfcrc8);Serial3.println(prtBuf);
     #endif
     PT_TIMER_DELAY(pt, 100);
   }
@@ -358,7 +359,7 @@ static int thread_transmit_5Hz_task(struct pt *pt) {
   while(1) {
     #ifdef  Debug5Hz
     char strBuf[20];
-//    Serial.println( sys.vertical_accel );
+//    Serial.println( sys.baro_pressure );
     dtostrf(constrain(sys.vertical_accel, 0.0, 100.0), 1, 2, strBuf);
     sprintf(prtBuf, "{\"N\":9,\"PRS\":%ld,\"CK\":\"%X\"}", sys.baro_pressure, rfcrc8);Serial3.println(prtBuf);
     sprintf(prtBuf, "{\"N\":11,\"VG\":%s,\"CK\":\"%X\"}", strBuf, rfcrc8);Serial3.println(prtBuf);

@@ -6,6 +6,7 @@
 Adafruit_GPS GPS(&Serial1);
 
 #define GPSECHO false
+#define debugGPS false
 
 commIMU imu;
 
@@ -29,7 +30,20 @@ void Postion_System_Init() {
   
   imuInit();
   delay(100);
-  imu.getData();
+  if( imu.getData() == true ) {
+    Serial.print("MPU9250:[");
+    Serial.print(imu.AX); Serial.print(',');
+    Serial.print(imu.AY); Serial.print(',');
+    Serial.print(imu.AZ); Serial.print(',');
+    Serial.print(imu.GX); Serial.print(',');
+    Serial.print(imu.GY); Serial.print(',');
+    Serial.print(imu.GZ); Serial.print(',');
+    Serial.print(imu.MX); Serial.print(',');
+    Serial.print(imu.MY); Serial.print(',');
+    Serial.print(imu.MZ); Serial.print(',');
+    Serial.print("]\r\n");
+  } else 
+    Serial.print("ERROR:MPU9250 Init Failure!\r\n");
   
   // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
   // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
@@ -42,15 +56,22 @@ void Postion_System_Init() {
   timer = micros();
   
   pressureInit();
+  orderTV();delay(20);tempVal();
+  orderPV();delay(50);
+  sys.baro_pressure = pressureVal();
+  Serial.print("\r\nBMP180:[");
+  Serial.print(sys.baro_pressure);
+  Serial.println("]\r\n");
   
   GPS_init();
-  
+
   Serial.println("\r\nPostion System Init Finished...\r\n");
   
   PT_INIT(&pt_pos_driver);
 }
 
 void TASK_Postion_Handle() {
+  
   thread_pos_driver(&pt_pos_driver);
   
   thread_acq_9dof_task(&pt_acq_9dof_task);
@@ -90,7 +111,7 @@ static bool Acq_Pos_Ok_Flag = false;
 static int thread_acq_9dof_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1){
-
+    
 IMU_REINIT:
     static uint32_t err_cnt = 5;
     static bool imu_status_flag = false;
@@ -144,7 +165,7 @@ IMU_REINIT:
     Serial.print(sys.my); Serial.print('\t');
     Serial.print(sys.mz); Serial.print('\t');
     Serial.println();
-#endif    
+#endif  
     Acq_Pos_Ok_Flag = true; // ***need modify to sem
     PT_TIMER_DELAY(pt, 50); // 20 Hz
   }
@@ -206,8 +227,9 @@ static int thread_clc_pos_task(struct pt *pt) {
   float declinationAngle = (4.0 + (26.0 / 60.0)) / (180 / M_PI);
   yaw += declinationAngle;
   yaw = correctAngle(yaw);
-  sys.mag_heading = sys.yaw = yaw = yaw * 180/M_PI;
-
+  sys.yaw = yaw = yaw * 180/M_PI;
+  sys.mag_heading = yaw + 8;
+  
   sys.vertical_accel = sqrt( sys.ax * sys.ax + sys.ay * sys.ay + sys.az * sys.az);
   sys.vertical_accel = shiftwinFilter(sys.vertical_accel) * CONSTANTS_ONE_G;
 //  Serial.print(sys.vertical_accel); Serial.print("\t");
@@ -232,12 +254,12 @@ static int thread_clc_pos_task(struct pt *pt) {
 }
 
 static bool Acq_Baro_Ok_Flag = false;
-static float temperature;
+static double temperature;
 static int thread_acq_baro_task(struct pt *pt) {
   PT_BEGIN(pt);
   while(1){
     orderTV();
-    PT_TIMER_DELAY(pt, 5);
+    PT_TIMER_DELAY(pt, 10);
     temperature = tempVal();
     
     orderPV();
@@ -256,7 +278,7 @@ static int thread_clc_alt_task(struct pt *pt) {
   while(1){
     PT_WAIT_UNTIL(pt, Acq_Baro_Ok_Flag == true);
     Acq_Baro_Ok_Flag = false;
-//    sys.baro_pressure = pressureKalmanFilter.updateEstimate( sys.baro_pressure );
+//    sys.baro_altitude = pressureKalmanFilter.updateEstimate( altitudeVal() );
     sys.baro_altitude = altitudeVal( sys.baro_pressure, 101325 );
 #if 0
     Serial.print(sys.baro_altitude);Serial.print("\t"); 
@@ -286,7 +308,8 @@ static int thread_clc_nema_task(struct pt *pt) {
     Acq_GPS_Ok_Flag = false;
     
     sys.gps_satellites = (unsigned char)GPS.satellites;
-    if( GPS.fix == true && GPS.fixquality == true ) {
+//    if( GPS.fix == true && GPS.fixquality == true ) {
+    if( GPS.fix == true ) {
       sys.gps_gndspeed = GPS.speed * 1.852;  // 1 knot = 1.852 Km/h
       sys.gps_latitude = GPS.latitude;
       sys.gps_longitude = GPS.longitude;
@@ -318,7 +341,7 @@ void serialEvent1() {
   if (GPSECHO)
     if (c) Serial.print(c);
   if (GPS.newNMEAreceived()) {
-    #ifdef debugGPS
+    #if debugGPS
     Serial.println(GPS.lastNMEA());
     #endif
     if (!GPS.parse(GPS.lastNMEA()))
